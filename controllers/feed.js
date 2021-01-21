@@ -3,7 +3,7 @@ const Post = require('../models/post');
 const User = require('../models/user');
 const fs = require('fs');
 const path = require('path');
-const post = require('../models/post');
+const io = require('../socket');
 
 // Asincrono usando async/await
 exports.getPosts = async (req, res, next) => {
@@ -13,6 +13,7 @@ exports.getPosts = async (req, res, next) => {
       const totalItems = await Post.countDocuments();
       const posts = await Post.find()
          .populate('creator') // trae la informacion relacionada de usuario creador del post
+         .sort({ createdAt: -1 }) // ordena por campo createdAt de manera descendiente (-1)
          .skip((page - 1) * perPage) // especifica cuantos items se ignoran desde el inicio
          .limit(perPage); // especifica cuantos items en total se deben traer
 
@@ -151,6 +152,10 @@ exports.createPost = async (req, res, next) => {
       user.posts.push(post); // se introduce el _id del post a la lista de posts del usuario, mongoDD hace el trabajo de buscar el _id ya que esta almacenado en post
       await user.save();
 
+      // emit() send message to all users, broadcast() send a message to all users but the one that was the sender
+      // se debe definir un nombre para el evento: 'posts' y luego un paquete de datos con la informacion que quieras enviar: { action: 'create', post: post }
+      io.getIO().emit('posts', { action: 'create', post: { ...post._doc, creator: { _id: req.userId, name: user.name } } });
+
       console.log('Post created!');
       // status(201) es success se creo un registro
       res.status(201).json({
@@ -254,13 +259,13 @@ exports.updatePost = async (req, res, next) => {
    }
 
    try {
-      const post = await Post.findById(postId);
+      const post = await Post.findById(postId).populate('creator');
       if (!post) {
          const error = new Error('Post not found');
          error.statusCode = 404;
          throw error;
       }
-      if (post.creator.toString() !== userId) {
+      if (post.creator._id.toString() !== userId) {
          const error = new Error('Not Authorized');
          error.statusCode = 403;
          throw error;
@@ -272,6 +277,11 @@ exports.updatePost = async (req, res, next) => {
       post.content = content;
       post.imageUrl = imageUrl;
       const result = await post.save();
+
+      // emit() send message to all users, broadcast() send a message to all users but the one that was the sender
+      // se debe definir un nombre para el evento: 'posts' y luego un paquete de datos con la informacion que quieras enviar: { action: 'update', post: result }
+      io.getIO().emit('posts', { action: 'update', post: result });
+
       console.log('Post updated!');
       res.status(200).json({
          message: 'Post updated.',
@@ -368,6 +378,10 @@ exports.deletePost = async (req, res, next) => {
       // obtengo el array de posts y elimino el id postId con pull()
       user.posts.pull(postId);
       await user.save();
+
+      // emit() send message to all users, broadcast() send a message to all users but the one that was the sender
+      // se debe definir un nombre para el evento: 'posts' y luego un paquete de datos con la informacion que quieras enviar: { action: 'delete', post: postId }
+      io.getIO().emit('posts', { action: 'delete', post: postId });
 
       console.log('Post deleted.');
       res.status(200).json({

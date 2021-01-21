@@ -70,6 +70,13 @@ mongoose.connect('mongodb+srv://Mandres:Mandres.07.mdb@cluster0.qnd1j.mongodb.ne
    .then(result => {
       console.log('Connected!');
       // creacion de un servidor de node con express
-      app.listen(8080);
+      const server = app.listen(8080);
+           
+      const io = require('./socket').init(server);
+
+      // Funcion que establece que hacer cuando se da una conexion
+      io.on('connection', socket => {
+         console.log('Client connected');
+      })
    })
    .catch(err => console.log(err));
